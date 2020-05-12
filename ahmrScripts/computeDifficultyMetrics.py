@@ -5,10 +5,19 @@ https://arxiv.org/pdf/1903.09848.pdf
 """
 
 import json
-from nltk.tokenize import word_tokenize
 import matplotlib.pyplot as plt
 import numpy as np
+import math
 
+from nltk.tokenize import word_tokenize
+from sklearn.feature_extraction.text import CountVectorizer
+
+"""
+Here, the difficulty is based on the total number of words in the example.
+The longest example is thus considered to be the hardest.
+A new key 'sent_distance' is created and saved into a new dataset
+Note that we strip out tokenized periods, so they don't affect the length
+"""
 def sentenceLength():
     dstFile = open("./sentenceLengthTrain.jsonl", "w+")
     data = []
@@ -25,29 +34,15 @@ def sentenceLength():
             l = len(tokens)
             data.append(l)
         line = None
-        
-        print("Generating analysis")
-        # generate a histogram and cdf
-        data = np.asarray(data)
-        data_sorted = np.sort(data)
-        proportional = np.linspace(0,1,len(data),endpoint=False)
-        
-        fig = plt.figure()
-        ax1 = fig.add_subplot(121)
-        ax1.hist(data,bins=70)
-        ax2 = fig.add_subplot(122)
-        ax2.plot(data_sorted,proportional)
-        plt.savefig("./hist.png",bbox_inches='tight')
-
-
-
+    
+    data_sorted,proportional = genPlots(data)
     print("Writing Back Results")
     with open("./train.jsonl","r") as srcFile:
 
         for i,line in enumerate(srcFile):
             js = json.loads(line)
             # np interp is a liitle lossy, ie the hardest problem will have cdf very close to 1 but not quite
-            # so that the data is a true probability distribution you should manually set the hardest problem to 1.0
+            # so that the data is a true probability distribution you should manually set the easiest and hardest problems to 0.0 and 1.0 respectively
             js["sent_length"] = np.interp(data[i],data_sorted,proportional)
             dstFile.writelines(json.dumps(js))
             dstFile.write('\n')
@@ -57,11 +52,94 @@ def sentenceLength():
 
 
 
-# TODO
-def wordRarity():
-    dstFile = open("./wordRarityTrain", "w+")
+"""
+Here rare tokens which occurr infrequently in the dataset are thought to make the example harder
+This is based on log-probablities calculated from a BOW model of the dataset
+
+Parameters:
+lowercase: If True, will convert all text to lowercase before building model
+stop_words: If True, removes all words in the NLTK stopword list. The difficulty of a sentnece will then be based
+only on the non stop words
+lemmatize: If true, uses the lemmatized version of the words to build the model
+"""
+def wordRarity(lowercase=False):
+    dstFile = open("./words.txt", "w+")
+    totalWords = 0
     with open("./train.jsonl","r") as srcFile:
-        pass
+        for line in srcFile:
+            js = json.loads(line)
+            seq = f"{js['obs1']} {js['obs2']} {js['hyp1']} {js['hyp2']}"
+            try:  
+                dstFile.writelines(seq)
+            except UnicodeEncodeError as e:
+                print(f"Error: {e}")
+            dstFile.write("\n")
+        dstFile.close()
+        dstFile = open("./words.txt", "r")
+        # TODO add option for stopwords
+        BoW = CountVectorizer(lowercase=lowercase)
+        X = BoW.fit_transform(dstFile)
+        totalWords = sum(list(BoW.vocabulary_.values()))
+        
+    
+    # Now compute difficulties
+    line = None
+    dataFile = open("./wordRarityTrain.jsonl","w+")
+    data = []   # for generating the graphs
+    with open("./train.jsonl","r") as srcFile:
+        for line in srcFile:
+            js = json.loads(line)
+            seq = f"{js['obs1']} {js['obs2']} {js['hyp1']} {js['hyp2']}"
+            tokens = word_tokenize(seq)
+            tokens = list(filter((".").__ne__,tokens))
+            logProb = 0.0
+            for token in tokens:
+                if BoW.vocabulary_.get(token) == None:
+                    # word which have no probability should be skipped
+                    continue
+                else:
+                    logProb += math.log((BoW.vocabulary_.get(token) / totalWords),10)
+            # data.append(min((-logProb,100.0)))
+            data.append(-logProb)
+            #js['rarity'] = -logProb
+            #dataFile.writelines(json.dumps(js))
+            #dataFile.write("\n")
+        # dataFile.close()
+        line = None
+        data_sorted,proportional = genPlots(data)
+        srcFile = open("./train.jsonl","r")
+        for i,line in enumerate(srcFile):
+            js = json.loads(line)
+            js["rarity"] = np.interp(data[i],data_sorted,proportional)
+            dataFile.writelines(json.dumps(js))
+            dataFile.write("\n")
+        
+    
+    dataFile.close()
 
 
-sentenceLength()
+
+def genPlots(data):
+    # TODO move creating the plots into a separate function
+    print("Generating analysis")
+    # generate a histogram and cdf
+    data = np.asarray(data)
+    data_sorted = np.sort(data)
+    proportional = np.linspace(0,1,len(data),endpoint=False)
+    
+    fig = plt.figure()
+    ax1 = fig.add_subplot(121)
+    ax1.hist(data,bins=70)
+    ax2 = fig.add_subplot(122)
+    ax2.plot(data_sorted,proportional)
+    # plt.show()
+    plt.savefig("./hist.png",bbox_inches='tight')
+    return data_sorted,proportional
+
+            
+
+
+
+# Uncomment the one you want
+# sentenceLength()
+wordRarity()
