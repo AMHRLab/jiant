@@ -69,8 +69,8 @@ def wordRarity(lowercase=False):
         for line in srcFile:
             js = json.loads(line)
             seq = f"{js['obs1']} {js['obs2']} {js['hyp1']} {js['hyp2']}"
-            try:  
-                dstFile.writelines(seq)
+            try:
+                dstFile.writelines(seq.encode("ascii",errors="ignore"))
             except UnicodeEncodeError as e:
                 print(f"Error: {e}")
             dstFile.write("\n")
@@ -99,12 +99,8 @@ def wordRarity(lowercase=False):
                     continue
                 else:
                     logProb += math.log((BoW.vocabulary_.get(token) / totalWords),10)
-            # data.append(min((-logProb,100.0)))
             data.append(-logProb)
-            #js['rarity'] = -logProb
-            #dataFile.writelines(json.dumps(js))
-            #dataFile.write("\n")
-        # dataFile.close()
+
         line = None
         data_sorted,proportional = genPlots(data)
         srcFile = open("./train.jsonl","r")
@@ -132,7 +128,6 @@ def genPlots(data):
     ax1.hist(data,bins=70)
     ax2 = fig.add_subplot(122)
     ax2.plot(data_sorted,proportional)
-    # plt.show()
     plt.savefig("./hist.png",bbox_inches='tight')
     return data_sorted,proportional
 
