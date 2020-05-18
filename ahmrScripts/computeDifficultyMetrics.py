@@ -141,12 +141,14 @@ def wordRarity(lowercase=False):
 This approach instead looks at the semantic similarity between h1 and h2 using BertScore
 If BertScore judge them to be similar, the problem is scored harder because it will presumably
 be more difficult to judge which hypothesis is correct
+Note that we normalize the vectors by converting to all values to positive
 """
 def bertScore():
+    dataFile = open("./trainBertScore.jsonl","w+")
     with open("./train.jsonl","r") as srcFile:
         all_F1 = []
-        all_P = []
-        all_R = []
+        # rescale_with_baseline bascially lets us get the F1 score in a proper -1 to 1 range
+        # see the paper for details
         scorer = BERTScorer(lang='en',rescale_with_baseline=True)
         for line in srcFile:
             js = json.loads(line)
@@ -156,11 +158,19 @@ def bertScore():
             hyp1.append(js['hyp1'])
             hyp2.append(js['hyp2'])          
             P, R, F1 = scorer.score(hyp1, hyp2, verbose=True)
+            F1 = abs(float(F1))
             all_F1.append(F1)
-            all_P.append(P)
-            all_R.append(R)
+            js["bertScore"] = F1
+            dataFile.writelines(json.dumps(js))
+            dataFile.write("\n")
+
         
-        print("here")
+        # normalize vectors
+        # all_F1 = [float(F) for F in all_F1]
+        # all_F1 = [abs(F) for F in all_F1]
+        data_sorted,p = genPlots(all_F1)
+
+        print("Done")
 
 
 
